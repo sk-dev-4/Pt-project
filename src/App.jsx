@@ -1,246 +1,392 @@
-import React, { useState } from 'react';
-import Header from './components/Header';
-import ClassSelector from './components/ClassSelector';
-import InbuiltNeeds from './components/InbuiltNeeds';
-import SubjectBoard from './components/SubjectBoard';
-import RecentActivity from './components/RecentActivity';
-import LoginPlaceholder from './components/LoginPlaceholder';
-import StudentInterface from './components/StudentInterface';
+import { useState } from 'react';
+import Navbar from './components/Navbar';
+import AboutUs from './components/AboutUs';
+import OurSolution from './components/OurSolution';
+import HardwarePanel from './components/HardwarePanel';
+import TeacherCustomizer from './components/TeacherCustomizer';
+import ParentView from './components/ParentView';
+import AuthModal from './components/AuthModal';
+import FAQSection from './components/FAQSection';
+import HelpSection from './components/HelpSection';
 import './App.css';
 
+// Initial default configuration
+const DEFAULT_CONFIG = {
+  subject: 'English',
+  button3: { value: 'A', label: 'A', speechText: 'Letter A', icon: '🅰️' },
+  button4: { value: 'B', label: 'B', speechText: 'Letter B', icon: '🅱️' },
+  button5: { value: 'C', label: 'C', speechText: 'Letter C', icon: '🔤' }
+};
+
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
-  const [activeRole, setActiveRole] = useState('parent'); // 'parent' or 'teacher'
+  // Navigation active section
+  const [activeSection, setActiveSection] = useState('home');
 
-  // Teacher metadata
-  const [teacher, setTeacher] = useState({
-    name: 'Ms. Sarah Jenkins',
-    email: 'sarah.teacher@nis.edu',
-    role: 'Lead Special Needs Educator',
-    initials: 'SJ'
-  });
-
-  // Parent & Child metadata
-  const [parent, setParent] = useState({
-    name: 'Mr. Rajesh Patel',
-    childName: 'Aarav Patel',
-    childClass: 'Class 1A - Primary AAC & Speech',
-    email: 'rajesh.patel@parent.nis.edu',
-    initials: 'RP'
-  });
-
-  // Registered classes
-  const [classes, setClasses] = useState([
-    {
-      id: 'class-1',
-      name: 'Class 1A - Primary AAC & Speech',
-      room: 'Room 101',
-      studentCount: 7
-    },
-    {
-      id: 'class-2',
-      name: 'Class 2B - Life Skills & Phonics',
-      room: 'Room 104',
-      studentCount: 8
-    },
-    {
-      id: 'class-3',
-      name: 'Class 3 - Sunshine Explorers',
-      room: 'Room 108',
-      studentCount: 5
-    }
-  ]);
-  const [currentClassId, setCurrentClassId] = useState('class-1');
-
-  // Accessibility & Settings
+  // Accessibility State
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [highContrast, setHighContrast] = useState(false);
 
-  // Urgent alerts for Inbuilt Needs (Water & Toilet)
-  const [activeAlerts, setActiveAlerts] = useState([
+  // Authentication State
+  const [currentUser, setCurrentUser] = useState(null); // null, { name, email, role: 'teacher' | 'parent' }
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
+
+  // Hardware Button Configuration
+  const [configuration, setConfiguration] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nis_button_config_v2');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return DEFAULT_CONFIG;
+  });
+
+  const [saveNotification, setSaveNotification] = useState(null);
+
+  // Live Student Communication Interaction History
+  const [interactions, setInteractions] = useState([
     {
-      id: 'alert-init-1',
+      id: 'init-1',
+      buttonNumber: 2,
+      isFixed: true,
+      label: 'I need water.',
+      value: 'Water',
+      phrase: 'I need water.',
       type: 'water',
-      label: 'Water Request 💧',
-      message: 'Student Aarav Patel indicated hydration requirement',
-      timestamp: '10:15 AM',
-      priority: 'normal'
-    }
-  ]);
-
-  // Live interaction history
-  const [history, setHistory] = useState([
-    {
-      id: 'h-1',
       icon: '💧',
-      label: 'Water Request',
-      phrase: 'Aarav Patel indicated hydration requirement via AAC board',
-      time: '10:15 AM',
-      type: 'water'
+      timestamp: '10:15 AM'
     },
     {
-      id: 'h-2',
-      icon: '1️⃣',
-      label: 'Number 1 Mastery',
-      phrase: 'Number One articulated during numerical task',
-      time: '09:50 AM',
-      type: 'speech'
+      id: 'init-2',
+      buttonNumber: 1,
+      isFixed: true,
+      label: 'Can I go to the restroom?',
+      value: 'Restroom',
+      phrase: 'Can I go to the restroom?',
+      type: 'toilet',
+      icon: '🚻',
+      timestamp: '09:40 AM'
     },
     {
-      id: 'h-3',
-      icon: '🍎',
-      label: 'Phonics: Letter A',
-      phrase: 'A for Apple articulated during literacy period',
-      time: '09:30 AM',
-      type: 'speech'
+      id: 'init-3',
+      buttonNumber: 3,
+      isFixed: false,
+      label: 'Letter A',
+      value: 'A',
+      phrase: 'Letter A',
+      type: 'speech',
+      icon: '🔤',
+      timestamp: '09:20 AM'
     }
   ]);
 
-  const currentClass = classes.find((c) => c.id === currentClassId) || classes[0];
+  // Handle hardware button triggered
+  const handleHardwareButtonTriggered = (buttonEvent) => {
+    const newRecord = {
+      id: 'hist-' + Date.now(),
+      buttonNumber: buttonEvent.buttonNumber,
+      isFixed: buttonEvent.isFixed,
+      label: buttonEvent.label,
+      value: buttonEvent.value,
+      phrase: buttonEvent.phrase,
+      type: buttonEvent.type,
+      icon: buttonEvent.type === 'toilet' ? '🚻' : buttonEvent.type === 'water' ? '💧' : '🔤',
+      timestamp: buttonEvent.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
 
-  const handleRequestTriggered = (newAlert) => {
-    setActiveAlerts((prev) => [newAlert, ...prev]);
-    setHistory((prev) => [
-      {
-        id: 'hist-' + Date.now(),
-        icon: newAlert.type === 'toilet' ? '🚻' : newAlert.type === 'water' ? '💧' : '💬',
-        label: newAlert.label,
-        phrase: newAlert.phrase || newAlert.message,
-        time: newAlert.time || newAlert.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        type: newAlert.type
-      },
-      ...prev
-    ]);
+    setInteractions((prev) => [newRecord, ...prev.slice(0, 19)]);
   };
 
-  const handleResolveAlert = (alertId) => {
-    setActiveAlerts((prev) => prev.filter((a) => a.id !== alertId));
+  // Handle Save Configuration locally
+  const handleSaveConfiguration = () => {
+    try {
+      localStorage.setItem('nis_button_config_v2', JSON.stringify(configuration));
+      setSaveNotification(
+        `Active configuration for ${configuration.subject} saved to browser storage. Button 3="${configuration.button3.value}", Button 4="${configuration.button4.value}", Button 5="${configuration.button5.value}". Fixed Buttons 1 & 2 remain active.`
+      );
+      setTimeout(() => {
+        setSaveNotification(null);
+      }, 5000);
+    } catch {
+      setSaveNotification('Configuration updated in session memory.');
+    }
   };
 
-  const handleButtonSpoken = (card) => {
-    setHistory((prev) => [
-      {
-        id: 'hist-' + Date.now(),
-        icon: card.icon || '💬',
-        label: card.label,
-        phrase: card.speechText || card.label,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        type: 'speech'
-      },
-      ...prev.slice(0, 40)
-    ]);
+  // Handle Reset Configuration
+  const handleResetConfiguration = () => {
+    setConfiguration(DEFAULT_CONFIG);
+    try {
+      localStorage.setItem('nis_button_config_v2', JSON.stringify(DEFAULT_CONFIG));
+    } catch {
+      // ignore
+    }
+    setSaveNotification('Buttons reset to default English alphabet presets (A, B, C).');
+    setTimeout(() => {
+      setSaveNotification(null);
+    }, 4000);
   };
 
-  const handleAddClass = (newCls) => {
-    setClasses((prev) => [...prev, newCls]);
-    setCurrentClassId(newCls.id);
+  // Navigation Helper with smooth scroll
+  const handleNavigate = (sectionId) => {
+    setActiveSection(sectionId);
+    if (sectionId === 'home') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
-  // If not authenticated, render Login Portal
-  if (!isLoggedIn) {
-    return (
-      <LoginPlaceholder
-        onLoginSuccess={(userData) => {
-          if (userData.role === 'parent') {
-            setParent((prev) => ({ ...prev, ...userData }));
-            setActiveRole('parent');
-          } else {
-            setTeacher((prev) => ({ ...prev, ...userData }));
-            setActiveRole('teacher');
-          }
-          setIsLoggedIn(true);
-        }}
-      />
-    );
-  }
+  // Open Auth Modal
+  const handleOpenAuth = (mode = 'login') => {
+    setAuthMode(mode);
+    setAuthModalOpen(true);
+  };
 
-  // 1. PARENT PORTAL & CHILD AAC INTERFACE VIEW
-  if (activeRole === 'parent') {
-    return (
-      <StudentInterface
-        parent={parent}
-        soundEnabled={soundEnabled}
-        highContrast={highContrast}
-        setHighContrast={setHighContrast}
-        onTriggerNeed={handleRequestTriggered}
-        onSwitchToTeacher={() => setActiveRole('teacher')}
-        onLogout={() => setIsLoggedIn(false)}
-        interactions={history}
-      />
-    );
-  }
+  // Login Success
+  const handleLoginSuccess = (userData) => {
+    setCurrentUser(userData);
+    if (userData.role === 'teacher') {
+      setActiveSection('hardware');
+      setTimeout(() => {
+        const hw = document.getElementById('hardware');
+        if (hw) hw.scrollIntoView({ behavior: 'smooth' });
+      }, 150);
+    } else {
+      setActiveSection('parent');
+      setTimeout(() => {
+        const p = document.getElementById('parent-portal');
+        if (p) p.scrollIntoView({ behavior: 'smooth' });
+      }, 150);
+    }
+  };
 
-  // 2. TEACHER DASHBOARD VIEW
+  // Logout
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setActiveSection('home');
+  };
+
   return (
-    <div className={`dashboard-root ${highContrast ? 'high-contrast-mode' : ''}`}>
-      <Header
-        teacher={teacher}
-        onUpdateTeacher={setTeacher}
-        highContrast={highContrast}
-        setHighContrast={setHighContrast}
+    <div className={`nis-app-root ${highContrast ? 'high-contrast-mode' : ''}`}>
+      {/* Top Header & Navigation Bar */}
+      <Navbar
+        activeSection={activeSection}
+        onNavigate={handleNavigate}
+        onOpenAuth={handleOpenAuth}
+        currentUser={currentUser}
+        onLogout={handleLogout}
         soundEnabled={soundEnabled}
-        setSoundEnabled={setSoundEnabled}
-        onLogout={() => setIsLoggedIn(false)}
-        onSwitchToParent={() => setActiveRole('parent')}
-        currentClass={currentClass}
+        onToggleSound={() => setSoundEnabled(!soundEnabled)}
+        highContrast={highContrast}
+        onToggleContrast={() => setHighContrast(!highContrast)}
       />
 
-      <main className="dashboard-main-container">
-        <section className="teacher-hero-banner">
-          <div className="banner-copy">
-            <span className="welcome-tag">Faculty Administration</span>
-            <h2>Welcome back, {teacher.name}</h2>
-            <p>
-              Assistive Communication Hub for students with special needs. Manage enrolled classrooms, supervise vital physiological alerts, and track IEP competencies.
-            </p>
-          </div>
-          <div className="banner-quick-stats">
-            <div className="stat-box">
-              <span className="stat-number">{classes.length}</span>
-              <span className="stat-desc">Enrolled Classes</span>
-            </div>
-            <div className="stat-box">
-              <span className="stat-number">{classes.reduce((acc, c) => acc + (c.studentCount || 0), 0)}</span>
-              <span className="stat-desc">Active Learners</span>
-            </div>
-            <div className="stat-box urgent-stat">
-              <span className="stat-number">{activeAlerts.length}</span>
-              <span className="stat-desc">Pending Alerts</span>
+      <main id="main-content" tabIndex={-1}>
+        {/* Hero Banner: Institutional Welcome */}
+        <section className="nis-hero-banner" aria-labelledby="hero-title">
+          <div className="nis-container">
+            <div className="hero-grid">
+              <div className="hero-copy">
+                <div className="hero-department-pill">
+                  <span className="inst-badge-dot"></span>
+                  <span>Sathyabama Institute of Science and Technology</span>
+                </div>
+                <h1 id="hero-title" className="hero-headline">
+                  NIS Assistive Communication System
+                </h1>
+                <p className="hero-subhead">
+                  Department of Artificial Intelligence & Machine Learning (AIML), Section A5. An inclusive five-button hardware interface and web customizer empowering physically challenged students in classroom environments.
+                </p>
+
+                <div className="hero-cta-group">
+                  <button
+                    type="button"
+                    className="nis-btn nis-btn-primary btn-large"
+                    onClick={() => handleNavigate('hardware')}
+                  >
+                    🎮 Try 5-Button Hardware Simulator
+                  </button>
+                  <button
+                    type="button"
+                    className="nis-btn nis-btn-outline btn-large"
+                    onClick={() => handleNavigate('solution')}
+                  >
+                    📖 Learn About Our Solution
+                  </button>
+                </div>
+
+                <div className="hero-meta-badges">
+                  <span className="meta-badge">
+                    <strong>2 Fixed Buttons:</strong> Restroom & Water
+                  </span>
+                  <span className="meta-badge">
+                    <strong>3 Dynamic Buttons:</strong> English (A–Z) & Math (1–9)
+                  </span>
+                </div>
+              </div>
+
+              <div className="hero-visual-card">
+                <div className="hero-device-snapshot">
+                  <div className="snapshot-header">
+                    <span className="dot red"></span>
+                    <span className="dot yellow"></span>
+                    <span className="dot green"></span>
+                    <span className="title">Physical 5-Button Tactile Unit</span>
+                  </div>
+                  <div className="snapshot-body">
+                    <div className="snapshot-buttons-row">
+                      <div className="snap-btn fixed" title="Button 1: Restroom (Fixed)">
+                        <span>🚻</span>
+                        <small>Restroom</small>
+                      </div>
+                      <div className="snap-btn fixed" title="Button 2: Water (Fixed)">
+                        <span>💧</span>
+                        <small>Water</small>
+                      </div>
+                      <div className="snap-btn dynamic" title="Button 3: Customizable">
+                        <span>{configuration.button3.value}</span>
+                        <small>Dynamic</small>
+                      </div>
+                      <div className="snap-btn dynamic" title="Button 4: Customizable">
+                        <span>{configuration.button4.value}</span>
+                        <small>Dynamic</small>
+                      </div>
+                      <div className="snap-btn dynamic" title="Button 5: Customizable">
+                        <span>{configuration.button5.value}</span>
+                        <small>Dynamic</small>
+                      </div>
+                    </div>
+                    <div className="snapshot-footer">
+                      <span className="sync-pulse"></span>
+                      <span>Synced with Teacher Web Dashboard</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
-        <ClassSelector
-          classes={classes}
-          currentClassId={currentClassId}
-          onSelectClass={setCurrentClassId}
-          onAddClass={handleAddClass}
-          activeAlertsCount={activeAlerts.length}
-        />
+        {/* 1. About Us Section */}
+        <AboutUs />
 
-        <InbuiltNeeds
-          soundEnabled={soundEnabled}
-          onRequestTriggered={handleRequestTriggered}
-          activeAlerts={activeAlerts}
-          onResolveAlert={handleResolveAlert}
-        />
+        {/* 2. Our Solution Section */}
+        <OurSolution onJumpToHardware={() => handleNavigate('hardware')} />
 
-        <SubjectBoard
-          soundEnabled={soundEnabled}
-          onButtonSpoken={handleButtonSpoken}
-        />
+        {/* 3. Five-Button Hardware Panel & Teacher Customizer Section */}
+        <section id="hardware" className="nis-section nis-hardware-section" aria-labelledby="hardware-heading">
+          <div className="nis-container">
+            <div className="nis-section-header">
+              <div className="nis-pill-badge navy">
+                <span className="pill-dot"></span>
+                <span>Interactive Hardware Simulation</span>
+              </div>
+              <h2 id="hardware-heading" className="nis-section-title">
+                Five-Button Hardware Panel & Teacher Customizer
+              </h2>
+              <div className="nis-title-underline"></div>
+              <p className="nis-section-lead">
+                Experience the physical tactile panel designed for students, alongside the teacher control interface to customize the three flexible buttons in real time.
+              </p>
+            </div>
 
-        <RecentActivity
-          history={history}
-          onClearHistory={() => setHistory([])}
+            {/* Visual Five-Button Hardware Panel */}
+            <HardwarePanel
+              configuration={configuration}
+              soundEnabled={soundEnabled}
+              onButtonTriggered={handleHardwareButtonTriggered}
+            />
+
+            {/* Teacher Customization Interface */}
+            <div className="customizer-mount-point">
+              <TeacherCustomizer
+                configuration={configuration}
+                onUpdateConfiguration={setConfiguration}
+                onSaveConfiguration={handleSaveConfiguration}
+                onResetConfiguration={handleResetConfiguration}
+                saveNotification={saveNotification}
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* 4. Parent Interface Section (Always accessible, or personalized if logged in) */}
+        <div id="parent-portal">
+          <ParentView
+            currentUser={currentUser}
+            interactions={interactions}
+            onSwitchToTeacher={() => handleNavigate('hardware')}
+            onOpenHardware={() => handleNavigate('hardware')}
+          />
+        </div>
+
+        {/* 5. Frequently Asked Questions (FAQ) Section */}
+        <FAQSection />
+
+        {/* 6. Help Section */}
+        <HelpSection
+          onOpenAuth={handleOpenAuth}
+          onJumpToHardware={() => handleNavigate('hardware')}
         />
       </main>
 
-      <footer className="dashboard-footer">
-        <p>
-          NIS Assistive Communication System • Institutional Special Education Platform • Compliant with AAC & Web Speech Guidelines
-        </p>
+      {/* Accessible Footer */}
+      <footer className="nis-footer" role="contentinfo">
+        <div className="nis-container">
+          <div className="footer-top-row">
+            <div className="footer-brand-column">
+              <div className="footer-logo">
+                <span className="logo-icon">🗣️</span>
+                <strong>NIS Assistive Communication System</strong>
+              </div>
+              <p className="footer-dept-tag">
+                Sathyabama Institute of Science and Technology<br />
+                Department of Artificial Intelligence and Machine Learning (AIML)<br />
+                Section A5 • Final Year Special Education Engineering Project
+              </p>
+            </div>
+
+            <div className="footer-nav-column">
+              <h4>Quick Navigation</h4>
+              <ul>
+                <li><button type="button" onClick={() => handleNavigate('about')}>About Us</button></li>
+                <li><button type="button" onClick={() => handleNavigate('solution')}>Our Solution</button></li>
+                <li><button type="button" onClick={() => handleNavigate('hardware')}>5-Button Hardware</button></li>
+                <li><button type="button" onClick={() => handleNavigate('faq')}>FAQ</button></li>
+                <li><button type="button" onClick={() => handleNavigate('help')}>Help & Guide</button></li>
+              </ul>
+            </div>
+
+            <div className="footer-portal-column">
+              <h4>User Access</h4>
+              <ul>
+                <li><button type="button" onClick={() => handleOpenAuth('login')}>Teacher / Parent Log In</button></li>
+                <li><button type="button" onClick={() => handleOpenAuth('signup')}>Create New Account (Sign Up)</button></li>
+                <li><button type="button" onClick={() => handleNavigate('parent-portal')}>Parent Portal Overview</button></li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="footer-bottom-row">
+            <p>© {new Date().getFullYear()} NIS Project • Sathyabama Institute of Science and Technology (AIML Section A5). Built with React & Web Speech API.</p>
+            <div className="footer-a11y-badge">
+              <span>♿ WCAG 2.1 AA Compliant Design</span>
+            </div>
+          </div>
+        </div>
       </footer>
+
+      {/* Authentication Modal Dialog (Log In / Sign Up) */}
+      <AuthModal
+        isOpen={authModalOpen}
+        initialMode={authMode}
+        onClose={() => setAuthModalOpen(false)}
+        onLoginSuccess={handleLoginSuccess}
+      />
     </div>
   );
 }
